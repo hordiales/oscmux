@@ -67,6 +67,8 @@ _handler (const char *path, const char *types, lo_arg **argv, int argc, lo_messa
 			lo_timetag tt;
 			lo_timetag_now (&tt);
 
+			//printf ("%x.%x\n", tt.sec, tt.frac);
+
 			tt.sec += dsec;
 			if (tt.frac + dfrac < tt.frac)
 				tt.sec += 1;
@@ -118,7 +120,7 @@ main (int argc, char **argv)
 				}
 				else
 					port = optarg;
-				printf ("%s:%s\n", host, port);
+				//printf ("%s:%s\n", host, port);
 
 				Output *out = calloc (1, sizeof (Output));
 				out->addr = lo_address_new (host, port);
