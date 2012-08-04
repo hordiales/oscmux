@@ -37,6 +37,9 @@ typedef struct _Output Output;
 
 struct _Input {
 	lo_server_thread serv;
+	char *path;
+	char *fmt;
+	int duplicate;
 };
 
 struct _Output {
@@ -47,7 +50,7 @@ struct _Output {
 static void
 _error (int num, const char *msg, const char *where)
 {
-	fprintf (stderr, "lo server error #%i '%s' at *s\n");
+	fprintf (stderr, "lo server error #%i '%s' at %s\n", msg, where);
 }
 
 static int
@@ -59,7 +62,7 @@ _handler (const char *path, const char *types, lo_arg **argv, int argc, lo_messa
 
 	EINA_LIST_FOREACH (outputs, l, out)
 	{
-		if (out->delay != 0.0)
+		if (out->delay > 0.0)
 		{
 			uint32_t dsec = out->delay;
 			uint32_t dfrac = (out->delay - dsec) * MAX_FRAC;
@@ -91,22 +94,64 @@ int
 main (int argc, char **argv)
 {
 	double delay = 0.0;
+	char *path = NULL;
+	char *fmt = NULL;
 	Eina_List *inputs = NULL;
 	Eina_List *outputs = NULL;
 
 	eina_init ();
 
 	int c;
-	while ( (c = getopt (argc, argv, "i:o:d:")) != -1)
+	while ( (c = getopt (argc, argv, "p:f:i:d:o:")) != -1)
 		switch (c)
 		{
+			case 'p':
+				path = optarg;
+				break;
+			case 'f':
+				fmt = optarg;
+				break;
 			case 'i':
 			{
 				Input *in = calloc (1, sizeof (Input));
-				in->serv = lo_server_thread_new (optarg, _error);
+
+				int port = atoi (optarg);
+				int exists = 0;
+				Eina_List *l;
+				Input *ptr;
+				EINA_LIST_FOREACH (inputs, l, ptr)
+					if ( (port == lo_server_thread_get_port (ptr->serv)) && (!ptr->duplicate) )
+					{
+						exists = 1;
+						break;
+					}
+
+				if (exists)
+				{
+					in->duplicate = 1;
+					in->serv = ptr->serv;
+				}
+				else
+					in->serv = lo_server_thread_new (optarg, _error);
+
+				if (path)
+				{
+					in->path = strdup (path);
+					path = NULL;
+				}
+
+				if (fmt)
+				{
+					in->fmt = strdup (fmt);
+					fmt = NULL;
+				}
+
 				inputs = eina_list_append (inputs, in);
 				break;
 			}
+			case 'd':
+				delay = atof (optarg);
+				break;
 			case 'o':
 			{
 				char *host = "localhost";
@@ -124,18 +169,15 @@ main (int argc, char **argv)
 
 				Output *out = calloc (1, sizeof (Output));
 				out->addr = lo_address_new (host, port);
+
 				out->delay = delay;
-				outputs = eina_list_append (outputs, out);
 				delay = 0.0;
-				break;
-			}
-			case 'd':
-			{
-				delay = atof (optarg);
+
+				outputs = eina_list_append (outputs, out);
 				break;
 			}
 			case '?':
-				if ( (optopt == 'i') || (optopt == 'o') || (optopt == 'd') )
+				if ( (optopt == 'i') || (optopt == 'o') || (optopt == 'd') || (optopt == 'p') || (optopt == 'f') )
 					fprintf (stderr, "Option `-%c' requires an argument.\n", optopt);
 				else if (isprint (optopt))
 					fprintf (stderr, "Unknown option `-%c'.\n", optopt);
@@ -148,7 +190,7 @@ main (int argc, char **argv)
 		
 	if (!inputs || !outputs)
 	{
-		fprintf (stderr, "usage: %s {-i PORT} {[-d DELAY] -o [HOST:]PORT}\n\n", argv[0]);
+		fprintf (stderr, "usage: %s {[-p PATH] [-f FORMAT] -i PORT} {[-d DELAY] -o [HOST:]PORT}\n\n", argv[0]);
 		return (1);
 	}
 
@@ -157,20 +199,32 @@ main (int argc, char **argv)
 	Input *in;
 	EINA_LIST_FOREACH (inputs, l, in)
 	{
-		lo_server_thread_add_method (in->serv, NULL, NULL, _handler, outputs);
-		lo_server_thread_start (in->serv);
+		lo_server_thread_add_method (in->serv, in->path, in->fmt, _handler, outputs);
+		if (!in->duplicate)
+			lo_server_thread_start (in->serv);
 	}
 
 	while (1)
 		usleep (10);
 
-	Output *out;
 	EINA_LIST_FREE (inputs, in)
 	{
-		lo_server_thread_stop (in->serv);
-		lo_server_free (in->serv);
+		if (!in->duplicate)
+		{
+			lo_server_thread_stop (in->serv);
+			lo_server_free (in->serv);
+		}
+
+		if (in->path)
+			free (in->path);
+
+		if (in->fmt)
+			free (in->fmt);
+
 		free (in);
 	}
+
+	Output *out;
 	EINA_LIST_FREE (outputs, out)
 	{
 		lo_address_free (out->addr);

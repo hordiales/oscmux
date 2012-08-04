@@ -1,7 +1,8 @@
 oscmux
 ============
 
-This program redirects Open Sound Control messages comming from an arbitrary number of local ports to an arbitrary number of host ports with arbitrary delays.
+This program redirects Open Sound Control messages coming from an arbitrary number of local ports to an arbitrary number of
+host ports with arbitrary delays and filtering according to path and format strings.
 
 command line usage
 ------------------
@@ -12,11 +13,17 @@ redirect messages from local port 3333 to local ports 4444 and 5555
 multiplex messages from local ports 1111 and 2222 and send them to port 4444 on 10.0.0.1 with a delay of 0.5 seconds
 	oscmux -i 1111 -i 2222 -d 0.5 -o 10.0.0.1:4444
 
-redirect messages from local port 2222 to local port 3333 with a delay of 10.1 seconds and to port 4444 on 10.0.0.2 with a delay of 4.3 seconds
+redirect messages from local port 2222 to local port 3333 with a delay of 1.1 seconds and to port 4444 on 10.0.0.2 with a delay of 4.3 seconds
 	oscmux -i 2222 -d 1.1 3333 -d 4.3 -o 10.0.0.2:4444
 
 multiplex messages from local ports 1111, 2222 and 3333 and send them to local ports 4444, 5555 and 6666
 	oscmux -i 1111 -i 2222 -i 3333 -o 4444 -o 5555 -o 6666
+
+only redirect messages matching path '/hello' from local port 1313 to port 6666 on 10.0.0.10 with a delay of 3.1415926 seconds
+	oscmux -p /hello -i 1313 -d 3.1415926 -o 10.0.0.10:6666
+
+only redirect messages with a single integer argument followed by a boolean true from local port 1313 to local port 1414 with no delay
+	oscmux -f iT -i 1313 -o 1414
 
 open sound control interface
 ----------------------------
