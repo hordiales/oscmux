@@ -139,6 +139,8 @@ main (int argc, char **argv)
 				else
 					in->serv = lo_server_thread_new_with_proto (port, proto, _error);
 
+				free (port);
+
 				if (path)
 				{
 					in->path = strdup (path);
