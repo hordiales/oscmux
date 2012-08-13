@@ -115,12 +115,17 @@ main (int argc, char **argv)
 			{
 				Input *in = calloc (1, sizeof (Input));
 
-				int port = atoi (optarg);
+				int proto = lo_url_get_protocol_id (optarg);
+				if (proto == -1)
+					fprintf (stderr, "protocol not supported\n");
+				char *port = lo_url_get_port (optarg);
+
+				int _port = atoi (optarg);
 				int exists = 0;
 				Eina_List *l;
 				Input *ptr;
 				EINA_LIST_FOREACH (inputs, l, ptr)
-					if ( (port == lo_server_thread_get_port (ptr->serv)) && (!ptr->duplicate) )
+					if ( (_port == lo_server_thread_get_port (ptr->serv)) && (!ptr->duplicate) )
 					{
 						exists = 1;
 						break;
@@ -132,7 +137,7 @@ main (int argc, char **argv)
 					in->serv = ptr->serv;
 				}
 				else
-					in->serv = lo_server_thread_new (optarg, _error);
+					in->serv = lo_server_thread_new_with_proto (port, proto, _error);
 
 				if (path)
 				{
@@ -154,21 +159,8 @@ main (int argc, char **argv)
 				break;
 			case 'o':
 			{
-				char *host = "localhost";
-				char *port;
-
-				if (port = strchr (optarg, ':'))
-				{
-					host = optarg;
-					*port = '\0';
-					port++;
-				}
-				else
-					port = optarg;
-				//printf ("%s:%s\n", host, port);
-
 				Output *out = calloc (1, sizeof (Output));
-				out->addr = lo_address_new (host, port);
+				out->addr = lo_address_new_from_url (optarg);
 
 				out->delay = delay;
 				delay = 0.0;
