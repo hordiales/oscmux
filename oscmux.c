@@ -50,7 +50,7 @@ struct _Output {
 static void
 _error (int num, const char *msg, const char *where)
 {
-	fprintf (stderr, "lo server error #%i '%s' at %s\n", msg, where);
+	fprintf (stderr, "lo server error #%i '%s' at %s\n", num, msg, where);
 }
 
 static int
