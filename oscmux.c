@@ -40,11 +40,13 @@ struct _Input {
 	char *path;
 	char *fmt;
 	int duplicate;
+	int queue;
 };
 
 struct _Output {
 	lo_address addr;
 	double delay;
+	Eina_List *bundles;
 };
 
 static void
@@ -54,7 +56,7 @@ _error (int num, const char *msg, const char *where)
 }
 
 static int
-_handler (const char *path, const char *types, lo_arg **argv, int argc, lo_message msg, void *data)
+_bundle_start_handler (lo_timetag time, void *data)
 {
 	Eina_List *outputs = data;
 	Eina_List *l;
@@ -62,29 +64,89 @@ _handler (const char *path, const char *types, lo_arg **argv, int argc, lo_messa
 
 	EINA_LIST_FOREACH (outputs, l, out)
 	{
+		lo_timetag tt = time;
+		if ( (time.sec == LO_TT_IMMEDIATE.sec) && (time.frac == LO_TT_IMMEDIATE.frac) )
+			lo_timetag_now (&tt);
+
 		if (out->delay > 0.0)
 		{
 			uint32_t dsec = out->delay;
 			uint32_t dfrac = (out->delay - dsec) * MAX_FRAC;
 
-			lo_timetag tt;
-			lo_timetag_now (&tt);
-
-			//printf ("%x.%x\n", tt.sec, tt.frac);
-
 			tt.sec += dsec;
 			if (tt.frac + dfrac < tt.frac)
 				tt.sec += 1;
 			tt.frac += dfrac;
-
-			lo_bundle bund;
-			bund = lo_bundle_new (tt);
-			lo_bundle_add_message (bund, path, msg);
-			lo_send_bundle (out->addr, bund);
-			lo_bundle_free (bund);
 		}
-		else
-			lo_send_message (out->addr, path, msg);
+
+		lo_bundle bundle = lo_bundle_new (tt);
+		out->bundles = eina_list_prepend (out->bundles, bundle);
+	}
+}
+
+static int
+_bundle_end_handler (void *data)
+{
+	Eina_List *outputs = data;
+	Eina_List *l;
+	Output *out;
+
+	EINA_LIST_FOREACH (outputs, l, out)
+	{
+		Eina_List *ptr = eina_list_nth_list (out->bundles, 0);
+		lo_bundle bundle = eina_list_data_get (ptr);
+		lo_send_bundle (out->addr, bundle);
+		lo_bundle_free_messages (bundle);
+		out->bundles = eina_list_remove_list (out->bundles, ptr);
+	}
+}
+
+static int
+_msg_handler (const char *path, const char *types, lo_arg **argv, int argc, lo_message msg, void *data)
+{
+	Eina_List *outputs = data;
+	Eina_List *l;
+	Output *out;
+
+	EINA_LIST_FOREACH (outputs, l, out)
+	{
+		lo_bundle bundle = eina_list_nth (out->bundles, 0);
+
+		if (bundle)
+		{
+			// clone message TODO this is very inefficient, but there is no other way with the current LO API
+			size_t len;
+			void *buf = lo_message_serialise (msg, path, NULL, &len);
+			lo_message _msg = lo_message_deserialise (buf, len, NULL);
+			free (buf);
+
+			lo_bundle_add_message (bundle, path, _msg);
+		}
+		else // !bundle
+		{
+			if (out->delay > 0.0)
+			{
+				uint32_t dsec = out->delay;
+				uint32_t dfrac = (out->delay - dsec) * MAX_FRAC;
+
+				lo_timetag tt;
+				lo_timetag_now (&tt);
+
+				//printf ("%x.%x\n", tt.sec, tt.frac);
+
+				tt.sec += dsec;
+				if (tt.frac + dfrac < tt.frac)
+					tt.sec += 1;
+				tt.frac += dfrac;
+
+				bundle = lo_bundle_new (tt);
+				lo_bundle_add_message (bundle, path, msg);
+				lo_send_bundle (out->addr, bundle);
+				lo_bundle_free (bundle);
+			}
+			else // out->delay == 0.0
+				lo_send_message (out->addr, path, msg);
+		}
 	}
 
 	return 0;
@@ -96,15 +158,19 @@ main (int argc, char **argv)
 	double delay = 0.0;
 	char *path = NULL;
 	char *fmt = NULL;
+	int queue = 0;
 	Eina_List *inputs = NULL;
 	Eina_List *outputs = NULL;
 
 	eina_init ();
 
 	int c;
-	while ( (c = getopt (argc, argv, "p:f:i:d:o:")) != -1)
+	while ( (c = getopt (argc, argv, "qp:f:i:d:o:")) != -1)
 		switch (c)
 		{
+			case 'q':
+				queue = 1;
+				break;
 			case 'p':
 				path = optarg;
 				break;
@@ -137,7 +203,7 @@ main (int argc, char **argv)
 					in->serv = ptr->serv;
 				}
 				else
-					in->serv = lo_server_thread_new_with_proto (port, proto, _error);
+					in->serv = lo_server_thread_new_with_proto (port, proto, _error); //FIXME disable queing
 
 				free (port);
 
@@ -153,6 +219,9 @@ main (int argc, char **argv)
 					fmt = NULL;
 				}
 
+				in->queue = queue;
+				queue = 0;
+
 				inputs = eina_list_append (inputs, in);
 				break;
 			}
@@ -166,6 +235,8 @@ main (int argc, char **argv)
 
 				out->delay = delay;
 				delay = 0.0;
+
+				out->bundles = NULL;
 
 				outputs = eina_list_append (outputs, out);
 				break;
@@ -193,7 +264,11 @@ main (int argc, char **argv)
 	Input *in;
 	EINA_LIST_FOREACH (inputs, l, in)
 	{
-		lo_server_thread_add_method (in->serv, in->path, in->fmt, _handler, outputs);
+		lo_server_thread_add_method (in->serv, in->path, in->fmt, _msg_handler, outputs);
+		lo_server *serv = lo_server_thread_get_server (in->serv);
+		lo_server_add_bundle_handlers (serv, _bundle_start_handler, _bundle_end_handler, outputs);
+		lo_server_enable_queue (serv, in->queue, 1);
+
 		if (!in->duplicate)
 			lo_server_thread_start (in->serv);
 	}
