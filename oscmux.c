@@ -32,8 +32,14 @@
 
 const uint32_t MAX_FRAC = 0xffffffff;
 
+typedef struct _Group Group;
 typedef struct _Input Input;
 typedef struct _Output Output;
+
+struct _Group {
+	Eina_List *inputs;
+	Eina_List *outputs;
+};
 
 struct _Input {
 	lo_server_thread serv;
@@ -82,6 +88,8 @@ _bundle_start_handler (lo_timetag time, void *data)
 		lo_bundle bundle = lo_bundle_new (tt);
 		out->bundles = eina_list_prepend (out->bundles, bundle);
 	}
+
+	return 1;
 }
 
 static int
@@ -99,6 +107,8 @@ _bundle_end_handler (void *data)
 		lo_bundle_free_messages (bundle);
 		out->bundles = eina_list_remove_list (out->bundles, ptr);
 	}
+
+	return 1;
 }
 
 static int
@@ -149,7 +159,7 @@ _msg_handler (const char *path, const char *types, lo_arg **argv, int argc, lo_m
 		}
 	}
 
-	return 0;
+	return 1;
 }
 
 int
@@ -159,16 +169,22 @@ main (int argc, char **argv)
 	char *path = NULL;
 	char *fmt = NULL;
 	int queue = 0;
+	Eina_List *groups = NULL;
 	Eina_List *inputs = NULL;
 	Eina_List *outputs = NULL;
+	Group *grp;
+	int state_outputs = 1;
 
 	eina_init ();
 
 	int c;
-	while ( (c = getopt (argc, argv, "qp:f:i:d:o:")) != -1)
+	while ( (c = getopt (argc, argv, "qQp:f:i:d:o:")) != -1)
 		switch (c)
 		{
 			case 'q':
+				queue = 0;
+				break;
+			case 'Q':
 				queue = 1;
 				break;
 			case 'p':
@@ -179,6 +195,14 @@ main (int argc, char **argv)
 				break;
 			case 'i':
 			{
+				if (state_outputs)
+				{
+					// create new output group
+					grp = calloc (1, sizeof (Group));
+					groups = eina_list_append (groups, grp);
+					state_outputs = 0;
+				}
+
 				Input *in = calloc (1, sizeof (Input));
 
 				int proto = lo_url_get_protocol_id (optarg);
@@ -186,7 +210,7 @@ main (int argc, char **argv)
 					fprintf (stderr, "protocol not supported\n");
 				char *port = lo_url_get_port (optarg);
 
-				int _port = atoi (optarg);
+				int _port = atoi (port);
 				int exists = 0;
 				Eina_List *l;
 				Input *ptr;
@@ -223,6 +247,7 @@ main (int argc, char **argv)
 				queue = 0;
 
 				inputs = eina_list_append (inputs, in);
+				grp->inputs = eina_list_append (grp->inputs, in);
 				break;
 			}
 			case 'd':
@@ -230,6 +255,9 @@ main (int argc, char **argv)
 				break;
 			case 'o':
 			{
+				if (!state_outputs)
+					state_outputs = 1;
+
 				Output *out = calloc (1, sizeof (Output));
 				out->addr = lo_address_new_from_url (optarg);
 
@@ -239,6 +267,7 @@ main (int argc, char **argv)
 				out->bundles = NULL;
 
 				outputs = eina_list_append (outputs, out);
+				grp->outputs = eina_list_append (grp->outputs, out);
 				break;
 			}
 			case '?':
@@ -255,27 +284,32 @@ main (int argc, char **argv)
 		
 	if (!inputs || !outputs)
 	{
-		fprintf (stderr, "usage: %s {[-p PATH] [-f FORMAT] -i PORT} {[-d DELAY] -o [HOST:]PORT}\n\n", argv[0]);
+		fprintf (stderr, "usage: %s {{[q|Q] [-p PATH] [-f FORMAT] -i PORT} {[-d DELAY] -o [HOST:]PORT}}\n\n", argv[0]);
 		return (1);
 	}
 
 	// set callbacks and start servers
-	Eina_List *l;
-	Input *in;
-	EINA_LIST_FOREACH (inputs, l, in)
+	Eina_List *L;
+	EINA_LIST_FOREACH (groups, L, grp)
 	{
-		lo_server_thread_add_method (in->serv, in->path, in->fmt, _msg_handler, outputs);
-		lo_server *serv = lo_server_thread_get_server (in->serv);
-		lo_server_add_bundle_handlers (serv, _bundle_start_handler, _bundle_end_handler, outputs);
-		lo_server_enable_queue (serv, in->queue, 1);
+		Eina_List *l;
+		Input *in;
+		EINA_LIST_FOREACH (grp->inputs, l, in)
+		{
+			lo_server_thread_add_method (in->serv, in->path, in->fmt, _msg_handler, grp->outputs);
+			lo_server *serv = lo_server_thread_get_server (in->serv);
+			lo_server_add_bundle_handlers (serv, _bundle_start_handler, _bundle_end_handler, grp->outputs);
+			lo_server_enable_queue (serv, in->queue, 1);
 
-		if (!in->duplicate)
-			lo_server_thread_start (in->serv);
+			if (!in->duplicate)
+				lo_server_thread_start (in->serv);
+		}
 	}
 
 	while (1)
 		usleep (10);
 
+	Input *in;
 	EINA_LIST_FREE (inputs, in)
 	{
 		if (!in->duplicate)
@@ -299,6 +333,9 @@ main (int argc, char **argv)
 		lo_address_free (out->addr);
 		free (out);
 	}
+
+	EINA_LIST_FREE (groups, grp)
+		free (grp);
 
 	eina_shutdown ();
 	

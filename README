@@ -25,6 +25,15 @@ only redirect messages matching path '/hello' from local port 1313 to port 6666 
 only redirect messages with a single integer argument followed by a boolean true from local port 1313 (via tcp) to local port 1414 (tcp) with no delay
 	oscmux -f iT -i osc.tcp://localhost:1313 -o osc.tcp://localhost:1414
 
+redirect messages matching path '/one' from local port 1212 to local port 1313 and redirect messages matching path '/two' from local port 1212 to local port 1414
+	oscmux -p /one -i osc://localhost:1212 -o osc://localhost:1313 -p /two -i osc://localhost:1212 -o osc://localhost:1414
+
+redirect messages from local port 1212 to local port 1313 enabling queueing messages when told so by a offset timestamp
+	oscmux -Q -i osc://localhost:1212 -o osc://localhost:1313
+
+redirect messages from local port 1212 to local port 1313 disabling queueing (which is the default) messages when told so by a offset timestamp
+	oscmux -q -i osc://localhost:1212 -o osc://localhost:1313
+
 open sound control interface
 ----------------------------
 TODO
