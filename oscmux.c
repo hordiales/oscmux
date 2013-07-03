@@ -124,13 +124,8 @@ _msg_handler (const char *path, const char *types, lo_arg **argv, int argc, lo_m
 
 		if (bundle)
 		{
-			// clone message TODO this is very inefficient, but there is no other way with the current LO API
-			size_t len;
-			void *buf = lo_message_serialise (msg, path, NULL, &len);
-			lo_message _msg = lo_message_deserialise (buf, len, NULL);
-			free (buf);
-
-			lo_bundle_add_message (bundle, path, _msg);
+			lo_message *clone = lo_message_clone (msg);
+			lo_bundle_add_message (bundle, path, clone);
 		}
 		else // !bundle
 		{
