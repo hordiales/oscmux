@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Hanspeter Portner (agenthp@users.sf.net)
+  *Copyright (c) 2013 Hanspeter Portner (dev@open-music-kontrollers)
  * 
  * This software is provided 'as-is', without any express or implied
  * warranty. In no event will the authors be held liable for any damages
@@ -31,6 +31,7 @@
 #include <Eina.h>
 
 const uint32_t MAX_FRAC = 0xffffffff;
+volatile int done = 0;
 
 typedef struct _Group Group;
 typedef struct _Input Input;
@@ -301,8 +302,8 @@ main (int argc, char **argv)
 		}
 	}
 
-	while (1)
-		usleep (10);
+	while (!done)
+		usleep (1e6);
 
 	Input *in;
 	EINA_LIST_FREE (inputs, in)
