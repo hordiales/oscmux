@@ -52,6 +52,7 @@ struct _Input {
 
 struct _Output {
 	lo_address addr;
+	char *rpath;
 	double delay;
 	Eina_List *bundles;
 };
@@ -126,7 +127,7 @@ _msg_handler (const char *path, const char *types, lo_arg **argv, int argc, lo_m
 		if (bundle)
 		{
 			lo_message *clone = lo_message_clone (msg);
-			lo_bundle_add_message (bundle, path, clone);
+			lo_bundle_add_message (bundle, out->rpath, clone);
 		}
 		else // !bundle
 		{
@@ -146,12 +147,13 @@ _msg_handler (const char *path, const char *types, lo_arg **argv, int argc, lo_m
 				tt.frac += dfrac;
 
 				bundle = lo_bundle_new (tt);
-				lo_bundle_add_message (bundle, path, msg);
+				lo_bundle_add_message (bundle, out->rpath, msg);
 				lo_send_bundle (out->addr, bundle);
 				lo_bundle_free (bundle);
 			}
 			else // out->delay == 0.0
-				lo_send_message (out->addr, path, msg);
+				lo_send_message (out->addr, out->rpath, msg);
+				
 		}
 	}
 
@@ -163,6 +165,7 @@ main (int argc, char **argv)
 {
 	double delay = 0.0;
 	char *path = NULL;
+	char *rpath = NULL;
 	char *fmt = NULL;
 	int queue = 0;
 	Eina_List *groups = NULL;
@@ -174,7 +177,7 @@ main (int argc, char **argv)
 	eina_init ();
 
 	int c;
-	while ( (c = getopt (argc, argv, "qQp:f:i:d:o:")) != -1)
+	while ( (c = getopt (argc, argv, "qQp:r:f:i:d:o:")) != -1)
 		switch (c)
 		{
 			case 'q':
@@ -185,6 +188,9 @@ main (int argc, char **argv)
 				break;
 			case 'p':
 				path = optarg;
+				break;
+			case 'r':
+				rpath = optarg;
 				break;
 			case 'f':
 				fmt = optarg;
@@ -262,6 +268,12 @@ main (int argc, char **argv)
 
 				out->bundles = NULL;
 
+				if (rpath)
+				{
+					out->rpath = strdup (rpath);
+					rpath = NULL;
+				}
+
 				outputs = eina_list_append (outputs, out);
 				grp->outputs = eina_list_append (grp->outputs, out);
 				break;
@@ -316,7 +328,6 @@ main (int argc, char **argv)
 
 		if (in->path)
 			free (in->path);
-
 		if (in->fmt)
 			free (in->fmt);
 
@@ -327,6 +338,9 @@ main (int argc, char **argv)
 	EINA_LIST_FREE (outputs, out)
 	{
 		lo_address_free (out->addr);
+		if (out->rpath)
+			free (out->rpath);
+
 		free (out);
 	}
 
