@@ -1,7 +1,16 @@
-# oscmux
+# oscmux mod
 
 This program redirects Open Sound Control messages coming from an arbitrary number of local ports to an arbitrary number of
 host ports with arbitrary delays and filtering according to path and format strings.
+
+This version is modified to support a fixed path translate.
+
+Example: only redirect messages matching path '/user/fader_1' from from local port 12345 to local port 9000 but renamed as /myinputvalue
+	
+	oscmux  -p /user/fader_1 -r /myinputvalue -i osc.udp://localhost:12345 -o osc.udp://localhost:9000
+	
+
+Note: Original without modifications at [https://github.com/OpenMusicKontrollers/oscmux](https://github.com/OpenMusicKontrollers/oscmux)
 
 ## command line usage
 
