@@ -11,7 +11,8 @@ find_package (PkgConfig) # ${PKG_CONFIG_FOUND}
 
 # eina
 find_package (Eina)
-include_directories (${EINA_INCLUDE_DIR})
+include_directories (${PC_EINA_INCLUDE_DIRS})
+
 set (LIBS ${LIBS} ${EINA_LIBRARY})
 
 # liblo
