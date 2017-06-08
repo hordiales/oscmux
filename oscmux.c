@@ -124,6 +124,10 @@ _msg_handler (const char *path, const char *types, lo_arg **argv, int argc, lo_m
 	{
 		lo_bundle bundle = eina_list_nth (out->bundles, 0);
 
+		if (! out->rpath) {
+			out->rpath = path;
+		}
+		
 		if (bundle)
 		{
 			lo_message *clone = lo_message_clone (msg);
