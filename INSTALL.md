@@ -11,7 +11,11 @@
             
 ## Linux
 
-            $ sudo apt-get install libeina-dev
+            $ sudo apt-get install -y \
+                        build-essential \
+                        cmake \
+                        liblo-dev \
+                        libeina-dev
 
 WARNING: Workaround if Efl_Config.h is missing. Add '/usr/include/efl-1' or ${PC_EINA_INCLUDE_DIRS} path to CMakeLists.txt
 
